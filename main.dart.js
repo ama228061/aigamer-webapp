@@ -25561,7 +25561,7 @@ a4u(a){return A.aJz(a)},
 aJz(a){var s=0,r=A.U(t.N),q,p=2,o=[],n,m,l,k,j,i,h,g,f,e,d
 var $async$a4u=A.P(function(b,c){if(b===1){o.push(c)
 s=p}while(true)switch(s){case 0:p=4
-i=A.hC("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key="+A.az_(),0,null)
+i=A.hC("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key="+A.az_(),0,null)
 h=t.N
 g=A.ad(["Content-Type","application/json","x-goog-api-key",A.az_()],h,h)
 f=A.Z(a).h("a7<1,aq<n,G>>")

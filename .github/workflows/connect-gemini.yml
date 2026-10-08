@@ -14,6 +14,7 @@ on:
       - scripts/connect-pages.mjs
       - scripts/deploy-worker.mjs
       - scripts/check-gemini.mjs
+      - scripts/verify-live-pages.py
 
 permissions:
   contents: write
@@ -38,7 +39,8 @@ jobs:
           cache: npm
       - name: Check required credentials
         # Every new run reads the current values from repository Actions secrets.
-        # Standard Gemini keys must be explicitly restricted to Gemini API.
+        # Standard keys must allow generativelanguage.googleapis.com explicitly.
+        # Bound accounts need project API-use permission after IAM propagation.
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -232,3 +234,10 @@ jobs:
             console.error("::error::GitHub Pages did not publish the verified configuration within three minutes. Check the Pages build status before retrying.");
             process.exit(1);
           '
+      - name: Verify the real published browser chat and hidden token journal
+        env:
+          WORKER_URL: ${{ steps.worker.outputs.deployment-url }}
+        run: |
+          python3 -m pip install --disable-pip-version-check playwright==1.62.0
+          export EXPECTED_MODEL="$(node --input-type=module -e 'import { DEFAULT_MODEL } from "./chat.mjs"; process.stdout.write(DEFAULT_MODEL);')"
+          python3 scripts/verify-live-pages.py

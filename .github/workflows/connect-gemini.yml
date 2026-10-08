@@ -2,6 +2,16 @@ name: Connect Gemini 3 Worker
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/connect-gemini.yml
+      - worker.mjs
+      - chat.mjs
+      - wrangler.jsonc
+      - package.json
+      - package-lock.json
+      - scripts/connect-pages.mjs
 
 permissions:
   contents: write

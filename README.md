@@ -23,7 +23,7 @@ GitHub Pages публикует статические файлы и не исп
 Самый простой путь — подготовленный workflow **Connect Gemini 3 Worker**:
 
 1. В [настройках Actions secrets репозитория](https://github.com/ama228061/aigamer-webapp/settings/secrets/actions) добавьте `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` и `GEMINI_API_KEY`. Вводите значения только в защищённые поля GitHub. Cloudflare token должен иметь доступ к нужному аккаунту с правами Workers Scripts: Edit и Account Settings: Read. Account ID можно найти в панели аккаунта Cloudflare.
-2. Откройте Actions → **Connect Gemini 3 Worker** → Run workflow для ветки `main`.
+2. Workflow запускается при отправке изменений Worker или его настройки в `main`. После добавления или исправления секретов его можно запустить отдельно: Actions → **Connect Gemini 3 Worker** → Run workflow для ветки `main`.
 3. Workflow проверит код, развернёт Worker, загрузит ключ Gemini как Cloudflare secret и выполнит один короткий настоящий запрос. Только после успешного ответа Gemini 3 он запишет endpoint в `config.js`, отправит его в `main` и запросит сборку GitHub Pages.
 
 Если ключ или модель недоступны, публичный endpoint не меняется. Workflow не включает оплату в Google и не меняет тариф аккаунта. Доступность бесплатной квоты проверьте в AI Studio до запуска.

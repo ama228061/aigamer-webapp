@@ -97,6 +97,10 @@ jobs:
           urls = [
               'https://ai.google.dev/gemini-api/docs/api-key?hl=en',
               'https://docs.cloud.google.com/api-keys/docs/create-manage-api-keys?hl=en',
+              'https://ai.google.dev/gemini-api/docs/oauth?hl=en',
+              'https://docs.cloud.google.com/api-keys/docs/authentication',
+              'https://docs.cloud.google.com/iam/docs/roles-permissions/generativelanguage',
+              'https://docs.cloud.google.com/iam/docs/roles-permissions/serviceusage',
               'https://ai.google.dev/gemini-api/docs/troubleshooting?hl=en',
               'https://ai.google.dev/gemini-api/docs/available-regions?hl=en',
           ]
@@ -108,8 +112,11 @@ jobs:
                   continue
               page = re.sub(r'<(script|style)\b.*?</\1>', '', page, flags=re.S)
               plain = re.sub(r'\s+', ' ', html.unescape(re.sub('<[^>]+>', ' ', page)))
+              roles = sorted(set(re.findall(r'roles/[A-Za-z0-9_.]+', plain)))
+              if roles:
+                  print('::notice title=Public IAM role identifiers::' + url + ' ' + ' | '.join(roles)[:5000])
               excerpts = []
-              for pattern in [r'authenticated key', r'service account', r'bound API key', r'generativelanguage\.[a-z]+', r'Gemini API User', r'free tier', r'billing', r'PERMISSION_DENIED', r'Uzbekistan']:
+              for pattern in [r'authenticated key', r'service account', r'bound API key', r'generativelanguage\.[a-z]+', r'Gemini API User', r'Service Usage Consumer', r'serviceusage\.services\.use', r'free tier', r'billing', r'PERMISSION_DENIED', r'Uzbekistan']:
                   match = re.search(pattern, plain, re.I)
                   if match:
                       excerpt = plain[max(0, match.start()-300):match.end()+1600]

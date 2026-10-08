@@ -24,12 +24,16 @@ jobs:
               print('::error::Official Gemini pricing could not be retrieved. No generation requests were made.')
               raise SystemExit(1)
           headings = list(re.finditer(r'<h[23]\b[^>]*>.*?</h[23]>', page, re.S))
-          found = False
-          for i, heading in enumerate(headings):
+          model_headings = []
+          for heading in headings:
               title = re.sub(r'\s+', ' ', html.unescape(re.sub('<[^>]+>', ' ', heading.group())))
+              if re.search(r'Gemini\s+\d', title, re.I):
+                  model_headings.append((heading, title))
+          found = False
+          for i, (heading, title) in enumerate(model_headings):
               if not re.search(r'Gemini\s+3(?:\.|\s)', title, re.I):
                   continue
-              end = headings[i+1].start() if i+1 < len(headings) else len(page)
+              end = model_headings[i+1][0].start() if i+1 < len(model_headings) else len(page)
               section = page[heading.start():end]
               section = re.sub(r'<(script|style)\b.*?</\1>', '', section, flags=re.S)
               plain = re.sub(r'\s+', ' ', html.unescape(re.sub('<[^>]+>', ' ', section))).strip()
@@ -39,6 +43,8 @@ jobs:
               print('::notice title=Official Gemini pricing::' + safe)
               found = True
           if not found:
+              titles = [re.sub(r'\s+', ' ', html.unescape(re.sub('<[^>]+>', ' ', heading.group()))).strip() for heading in headings]
+              print('::notice title=Public pricing headings::' + ' | '.join(titles)[:5000])
               print('::error::No Gemini 3 free-tier pricing section was identified in the official page. No generation requests were made.')
               raise SystemExit(1)
           print('::notice::Pricing inspection completed without using the Gemini key or generating text.')

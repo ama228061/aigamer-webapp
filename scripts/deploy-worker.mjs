@@ -10,12 +10,20 @@ export function deploymentResult(result, redactions = []) {
       `${result.stdout || ""}\n${result.stderr || ""}`,
     );
     const codes = [
-      ...new Set([...output.matchAll(/\[code:\s*(\d+)\]/g)].map((m) => m[1])),
+      ...new Set(
+        [
+          ...output.matchAll(/(?:\[code:|"code"\s*:|error code:)\s*"?(\d+)/gi),
+        ].map((m) => m[1]),
+      ),
     ];
     const errorStart = output.indexOf("[ERROR]");
     let detail =
       errorStart >= 0
-        ? output.slice(errorStart + "[ERROR]".length).split(/\n\s*\n/)[0]
+        ? output
+            .slice(errorStart + "[ERROR]".length)
+            .split(/\n\s*\n/)
+            .slice(0, 3)
+            .join(" ")
         : String(result.stderr || "")
             .split("\n")
             .find((line) => line.trim()) || "unreported";
@@ -23,7 +31,7 @@ export function deploymentResult(result, redactions = []) {
       (value) => typeof value === "string" && value,
     ))
       detail = detail.split(value).join("[redacted]");
-    detail = detail.replace(/[\r\n]+/g, " ").slice(0, 600);
+    detail = detail.replace(/[\r\n]+/g, " ").slice(0, 1000);
     const categories = [
       [
         /authentication error|unauthori[sz]ed|insufficient permission|permission denied/i,

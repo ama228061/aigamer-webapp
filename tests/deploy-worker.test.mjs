@@ -17,19 +17,19 @@ test("Worker deployment extracts its actual public URL from Wrangler output", ()
   );
 });
 
-test("deployment failure reports Cloudflare codes without forwarding credential-bearing diagnostics", () => {
+test("deployment failure reports Cloudflare error details with credentials redacted", () => {
   const result = {
     status: 1,
     stderr:
-      "[ERROR] Authentication error [code: 9109]\n\nProvider diagnostic: sample-private-token-value",
+      "[ERROR] A request to the Cloudflare API failed.\n\nAuthentication error [code: 9109]\nToken: sample-private-token-value",
   };
   assert.throws(
-    () => deploymentResult(result),
+    () => deploymentResult(result, ["sample-private-token-value"]),
     (error) => {
       assert.match(error.message, /9109/);
       assert.match(error.message, /authentication or permissions/);
       assert.ok(!error.message.includes("sample-private-token-value"));
-      assert.ok(!error.message.includes("Provider diagnostic"));
+      assert.match(error.message, /\[redacted\]/);
       return true;
     },
   );

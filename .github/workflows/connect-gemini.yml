@@ -76,6 +76,33 @@ jobs:
                   process.exit(1);
                 }
                 console.info("::notice::" + label + " verified.");
+                if (path === "/user/tokens/verify" && /^[a-f0-9]{32}$/i.test(data.result?.id || "")) {
+                  try {
+                    const detailsResponse = await fetch("https://api.cloudflare.com/client/v4/user/tokens/" + data.result.id, {
+                      headers: { Authorization: "Bearer " + process.env.CLOUDFLARE_API_TOKEN },
+                      signal: AbortSignal.timeout(10000),
+                    });
+                    const details = await detailsResponse.json().catch(() => ({}));
+                    if (detailsResponse.ok && details.success === true && Array.isArray(details.result?.policies)) {
+                      const policies = details.result.policies;
+                      const names = [...new Set(policies.flatMap(policy => Array.isArray(policy.permission_groups) ? policy.permission_groups.map(group => group.name) : []))].filter(name => typeof name === "string" && /^[a-zA-Z0-9 /:()._-]{1,100}$/.test(name));
+                      console.info("::notice::Cloudflare token permission groups: " + (names.join(", ") || "not returned"));
+                      const writePolicies = policies.filter(policy => policy.effect === "allow" && policy.permission_groups?.some(group => /workers scripts.*(write|edit)/i.test(group.name || "")));
+                      if (writePolicies.length) {
+                        const resource = "com.cloudflare.api.account." + process.env.CLOUDFLARE_ACCOUNT_ID;
+                        const matched = writePolicies.some(policy => Object.keys(policy.resources || {}).some(key => key === resource || key === "com.cloudflare.api.account.*" || key === "*"));
+                        console.info("::notice::Workers write policy includes the target account: " + matched);
+                      }
+                    } else {
+                      console.info("::notice::Token policy inspection is unavailable through this API (HTTP " + detailsResponse.status + "); check Permissions in the Cloudflare dashboard.");
+                    }
+                  } catch {
+                    console.info("::notice::Token policy inspection could not be completed; check Permissions in the Cloudflare dashboard.");
+                  }
+                }
+                if (path.endsWith("/workers/scripts") && Array.isArray(data.result)) {
+                  console.info("::notice::Target Worker already exists: " + data.result.some(worker => worker.id === "agro-assistant"));
+                }
               } catch {
                 console.error("::error::" + label + " could not be checked because the Cloudflare API request failed.");
                 process.exit(1);

@@ -1,0 +1,16 @@
+{
+  "name": "agro-assistant",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-07",
+  "vars": {
+    "ALLOWED_ORIGIN": "https://ama228061.github.io",
+    "GEMINI_MODEL": "gemini-2.5-flash",
+  },
+  "ratelimits": [
+    {
+      "name": "CHAT_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 15, "period": 60 },
+    },
+  ],
+}

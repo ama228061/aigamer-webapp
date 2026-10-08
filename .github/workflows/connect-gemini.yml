@@ -54,6 +54,7 @@ jobs:
             }
           '
       - name: Verify Cloudflare token and account access
+        # Publishing also requires Workers Scripts Edit; successful reads alone do not prove it.
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

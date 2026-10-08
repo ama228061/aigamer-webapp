@@ -165,6 +165,25 @@ test("provider failures are classified without exposing the provider body", asyn
   assert.equal(empty.status, 502);
 });
 
+test("a rejected Gemini key exposes only an allowlisted diagnostic code", async () => {
+  const response = await handleChat(request(), env, async () =>
+    Response.json(
+      {
+        error: {
+          message: `Your API key was reported as leaked: ${env.GEMINI_API_KEY}`,
+          details: [{ metadata: { project: "private-project" } }],
+        },
+      },
+      { status: 403 },
+    ),
+  );
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), {
+    error: "provider_auth",
+    providerReason: "API_KEY_REPORTED_LEAKED",
+  });
+});
+
 test("Worker handles CORS and rejects requests after the edge rate limit", async () => {
   const denied = await worker.fetch(request(), {
     ...env,

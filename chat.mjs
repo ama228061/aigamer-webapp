@@ -1,4 +1,47 @@
 export const DEFAULT_MODEL = "gemini-3.8-flash";
+const SAFE_PROVIDER_REASONS = new Set([
+  "API_KEY_INVALID",
+  "API_KEY_EXPIRED",
+  "API_KEY_NOT_FOUND",
+  "API_KEY_MISSING",
+  "API_KEY_BLOCKED",
+  "API_KEY_LEAKED",
+  "API_KEY_REPORTED_LEAKED",
+  "API_KEY_HTTP_REFERRER_BLOCKED",
+  "API_KEY_IP_ADDRESS_BLOCKED",
+  "API_KEY_SERVICE_BLOCKED",
+  "API_KEY_ANDROID_APP_BLOCKED",
+  "API_KEY_IOS_APP_BLOCKED",
+  "SERVICE_DISABLED",
+  "CONSUMER_INVALID",
+  "BILLING_DISABLED",
+  "CREDENTIALS_MISSING",
+  "IAM_PERMISSION_DENIED",
+]);
+
+export function safeProviderReason(reason) {
+  return SAFE_PROVIDER_REASONS.has(reason) ? reason : null;
+}
+
+// Emit only fixed diagnostic codes, never provider messages or project metadata.
+export function providerFailureReason(data) {
+  if (
+    typeof data?.error?.message === "string" &&
+    /reported as leaked/i.test(data.error.message)
+  )
+    return "API_KEY_REPORTED_LEAKED";
+  const details = data?.error?.details;
+  if (!Array.isArray(details)) return null;
+  for (const detail of details) {
+    if (
+      detail?.["@type"] === "type.googleapis.com/google.rpc.ErrorInfo" &&
+      safeProviderReason(detail.reason)
+    )
+      return detail.reason;
+  }
+  return null;
+}
+
 const MAX_BODY = 16000;
 const SYSTEM_PROMPT =
   "Вы — АгроПомощник, консультант по сельскому хозяйству и садоводству. Отвечайте по-русски, кратко: обычно 2–5 предложений. Уточняйте культуру, регион, почву и симптомы, когда от этого зависит совет. Не выдумывайте факты, точные дозировки препаратов или результаты анализов. Предпочитайте бережные методы ухода. Если данных недостаточно, объясните ограничения и предложите обратиться к местному агроному.";
@@ -151,6 +194,9 @@ export async function handleChat(
       },
     );
     if (!response.ok) {
+      const providerReason = providerFailureReason(
+        await response.json().catch(() => ({})),
+      );
       const error =
         response.status === 404
           ? "model_not_found"
@@ -159,10 +205,9 @@ export async function handleChat(
             : response.status === 429
               ? "rate_limited"
               : "upstream_unavailable";
-      // Provider bodies can contain sensitive diagnostics; never forward or log them.
-      await response.body?.cancel();
+      // Provider bodies can contain sensitive diagnostics; return only fixed codes.
       return jsonResponse(
-        { error },
+        { error, ...(providerReason ? { providerReason } : {}) },
         response.status === 429 ? 429 : 502,
         origin,
       );

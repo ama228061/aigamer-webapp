@@ -44,6 +44,10 @@ test("a missing key, unavailable model or malformed reply leaves public configur
   for (const [status, body] of [
     [503, { error: "not_configured" }],
     [502, { error: "model_not_found" }],
+    [
+      502,
+      { error: "provider_auth", providerReason: "API_KEY_REPORTED_LEAKED" },
+    ],
     [200, { reply: " " }],
     [200, { reply: "Готово.", model: "gemini-2.5-flash" }],
   ]) {
@@ -58,6 +62,29 @@ test("a missing key, unavailable model or malformed reply leaves public configur
       /Public configuration was not changed/,
     );
   }
+});
+
+test("connection failures do not copy arbitrary provider diagnostics to deployment logs", async () => {
+  await assert.rejects(
+    connectPages("https://agro-assistant.example.workers.dev", {
+      fetcher: async (url, options) =>
+        options.method === "OPTIONS"
+          ? readyPreflight()
+          : Response.json(
+              {
+                error: "provider_auth",
+                providerReason: "private-key-and-project-details",
+              },
+              { status: 502 },
+            ),
+      save: async () => assert.fail("Rejected key was published"),
+    }),
+    (failure) => {
+      assert.match(failure.message, /provider_auth/);
+      assert.ok(!failure.message.includes("private-key-and-project-details"));
+      return true;
+    },
+  );
 });
 
 test("routing readiness probes wait for propagation without repeating Gemini generation", async () => {

@@ -24,7 +24,7 @@ GitHub Pages публикует статические файлы и не исп
 
 1. В [настройках Actions secrets репозитория](https://github.com/ama228061/aigamer-webapp/settings/secrets/actions) добавьте `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` и `GEMINI_API_KEY`. Вводите значения только в защищённые поля GitHub. Cloudflare token должен иметь доступ к нужному аккаунту с правами Workers Scripts: Edit и Account Settings: Read. Account ID можно найти в панели аккаунта Cloudflare.
 2. Workflow запускается при отправке изменений Worker или его настройки в `main`. После добавления или исправления секретов его можно запустить отдельно: Actions → **Connect Gemini 3 Worker** → Run workflow для ветки `main`.
-3. Workflow проверит код, развернёт Worker, загрузит ключ Gemini как Cloudflare secret и активирует публичный адрес `workers.dev`. Сначала он дождётся корректного CORS-ответа на OPTIONS: эти проверки не вызывают Gemini. Затем выполнит один короткий настоящий запрос. Только после успешного ответа Gemini 3 он запишет endpoint в `config.js`, отправит его в `main` и запросит сборку GitHub Pages.
+3. Workflow проверит код и доступ ключа к метаданным выбранной модели без генерации. Затем развернёт Worker, загрузит ключ Gemini как Cloudflare secret и активирует публичный адрес `workers.dev`. Сначала он дождётся корректного CORS-ответа на OPTIONS: эти проверки не вызывают Gemini. Затем выполнит один короткий настоящий запрос. Только после успешного ответа Gemini 3 он запишет endpoint в `config.js`, отправит его в `main` и запросит сборку GitHub Pages.
 
 Если ключ или модель недоступны, публичный endpoint не меняется. Workflow не включает оплату в Google и не меняет тариф аккаунта. Доступность бесплатной квоты проверьте в AI Studio до запуска.
 

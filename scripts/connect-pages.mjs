@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { safeProviderReason } from "../chat.mjs";
 
 const SITE_ORIGIN = "https://ama228061.github.io";
 
@@ -96,8 +97,9 @@ export async function connectPages(
       "timeout",
       "upstream_unavailable",
     ]);
+    const reason = safeProviderReason(data.providerReason);
     throw new Error(
-      `Worker check failed (HTTP ${response.status}, ${codes.has(data.error) ? data.error : "invalid_response"}). Public configuration was not changed.`,
+      `Worker check failed (HTTP ${response.status}, ${codes.has(data.error) ? data.error : "invalid_response"}${reason ? ", " + reason : ""}). Public configuration was not changed.`,
     );
   }
   if (typeof data.model !== "string" || !data.model.startsWith("gemini-3")) {

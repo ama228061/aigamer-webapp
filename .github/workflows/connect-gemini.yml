@@ -46,6 +46,10 @@ jobs:
               console.error("::error::Add these repository Actions secrets: " + missing.join(", "));
               process.exit(1);
             }
+            if (!/^[a-f0-9]{32}$/i.test(process.env.CLOUDFLARE_ACCOUNT_ID)) {
+              console.error("::error::CLOUDFLARE_ACCOUNT_ID must be the 32-character account ID from the Cloudflare dashboard URL.");
+              process.exit(1);
+            }
           '
       - run: npm ci --no-audit --no-fund
       - run: npm test

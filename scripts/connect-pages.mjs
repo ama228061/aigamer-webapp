@@ -53,14 +53,16 @@ export async function connectPages(
       "Worker did not confirm a Gemini 3 model. Public configuration was not changed.",
     );
   }
-  if (data.usage)
-    console.info(
-      JSON.stringify({
-        event: "deployment_token_usage",
-        model: data.model,
-        usage: data.usage,
-      }),
-    );
+  if (data.usage) {
+    const usageRecord = JSON.stringify({
+      event: "deployment_token_usage",
+      model: data.model,
+      usage: data.usage,
+    });
+    console.info(usageRecord);
+    if (process.env.GITHUB_ACTIONS === "true")
+      console.info(`::notice title=Gemini token usage::${usageRecord}`);
+  }
   await save(
     `// Public API endpoint. API credentials stay in Cloudflare secrets.\nwindow.AGRO_CONFIG = ${JSON.stringify({ chatEndpoint: endpoint })};\n`,
   );
@@ -73,7 +75,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const endpoint = await connectPages(process.env.WORKER_URL);
     console.log(`Gemini Worker verified. Saved public endpoint: ${endpoint}`);
   } catch (error) {
-    console.error(error.message);
+    console.error(
+      process.env.GITHUB_ACTIONS === "true"
+        ? `::error::${error.message}`
+        : error.message,
+    );
     process.exitCode = 1;
   }
 }

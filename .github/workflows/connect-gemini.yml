@@ -50,6 +50,13 @@ jobs:
               console.error("::error::Add these repository Actions secrets: " + missing.join(", "));
               process.exit(1);
             }
+            const key = process.env.GEMINI_API_KEY;
+            const format = /^AIza[A-Za-z0-9_-]{35}$/.test(key)
+              ? "standard API key format"
+              : key.startsWith("AQ.")
+                ? "authorization key format"
+                : "unrecognized key format";
+            console.info("::notice::Stored Gemini credential uses " + format + ". No credential value was logged.");
             if (!/^[a-f0-9]{32}$/i.test(process.env.CLOUDFLARE_ACCOUNT_ID)) {
               console.error("::error::CLOUDFLARE_ACCOUNT_ID must be the 32-character account ID from the Cloudflare dashboard URL.");
               process.exit(1);

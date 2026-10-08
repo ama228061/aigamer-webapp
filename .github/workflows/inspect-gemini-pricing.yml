@@ -101,6 +101,9 @@ jobs:
               'https://docs.cloud.google.com/api-keys/docs/authentication',
               'https://docs.cloud.google.com/iam/docs/roles-permissions/generativelanguage',
               'https://docs.cloud.google.com/iam/docs/roles-permissions/serviceusage',
+              'https://docs.cloud.google.com/service-usage/docs/access-control',
+              'https://docs.cloud.google.com/docs/authentication/api-keys-use',
+              'https://docs.cloud.google.com/api-keys/docs/overview',
               'https://ai.google.dev/gemini-api/docs/troubleshooting?hl=en',
               'https://ai.google.dev/gemini-api/docs/available-regions?hl=en',
           ]
@@ -110,8 +113,15 @@ jobs:
               except Exception:
                   print('::warning::Public authentication documentation could not be retrieved from ' + url)
                   continue
+              title = re.search(r'<title\b[^>]*>(.*?)</title>', page, re.S)
+              if title:
+                  print('::notice title=Public documentation title::' + url + ' ' + re.sub(r'\s+', ' ', html.unescape(re.sub('<[^>]+>', '', title.group(1)))).strip())
+              article = re.search(r'<article\b[^>]*>(.*?)</article>', page, re.S)
+              if article:
+                  page = article.group(1)
               page = re.sub(r'<(script|style)\b.*?</\1>', '', page, flags=re.S)
               plain = re.sub(r'\s+', ' ', html.unescape(re.sub('<[^>]+>', ' ', page)))
+              plain = re.sub(r'roles/\s+', 'roles/', plain)
               roles = sorted(set(re.findall(r'roles/[A-Za-z0-9_.]+', plain)))
               if roles:
                   print('::notice title=Public IAM role identifiers::' + url + ' ' + ' | '.join(roles)[:5000])

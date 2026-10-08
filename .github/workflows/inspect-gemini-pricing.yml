@@ -108,6 +108,8 @@ jobs:
               'https://ai.google.dev/gemini-api/docs/troubleshooting?hl=en',
               'https://ai.google.dev/gemini-api/docs/available-regions?hl=en',
           ]
+          # Keep API-consumer evidence within the run page's annotation limit.
+          urls.sort(key=lambda url: 0 if 'serviceusage' in url or 'service-usage' in url or 'api-keys-use' in url else 1)
           for url in urls:
               try:
                   page = urllib.request.urlopen(url, timeout=30).read().decode()

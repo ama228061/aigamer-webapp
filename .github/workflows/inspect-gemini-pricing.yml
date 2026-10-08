@@ -93,7 +93,8 @@ jobs:
       - name: Read public key authentication and free-tier requirements
         run: |
           python3 - <<'PY'
-          import urllib.request, re, html
+          import urllib.request, re, html, os
+          summary = []
           urls = [
               'https://ai.google.dev/gemini-api/docs/api-key?hl=en',
               'https://docs.cloud.google.com/api-keys/docs/create-manage-api-keys?hl=en',
@@ -115,7 +116,9 @@ jobs:
                   continue
               title = re.search(r'<title\b[^>]*>(.*?)</title>', page, re.S)
               if title:
-                  print('::notice title=Public documentation title::' + url + ' ' + re.sub(r'\s+', ' ', html.unescape(re.sub('<[^>]+>', '', title.group(1)))).strip())
+                  title_text = re.sub(r'\s+', ' ', html.unescape(re.sub('<[^>]+>', '', title.group(1)))).strip()
+                  print('::notice title=Public documentation title::' + url + ' ' + title_text)
+                  summary.append('\n### ' + title_text + '\n\nSource: ' + url + '\n')
               article = re.search(r'<article\b[^>]*>(.*?)</article>', page, re.S)
               if article:
                   page = article.group(1)
@@ -125,8 +128,9 @@ jobs:
               roles = sorted(set(re.findall(r'roles/[A-Za-z0-9_.]+', plain)))
               if roles:
                   print('::notice title=Public IAM role identifiers::' + url + ' ' + ' | '.join(roles)[:5000])
+                  summary.append('\nPublished role IDs: ' + ', '.join('`' + role + '`' for role in roles)[:5000] + '\n')
               excerpts = []
-              for pattern in [r'authenticated key', r'service account', r'bound API key', r'generativelanguage\.[a-z]+', r'Gemini API User', r'Service Usage Consumer', r'serviceusage\.services\.use', r'free tier', r'billing', r'PERMISSION_DENIED', r'Uzbekistan']:
+              for pattern in [r'authenticated key', r'service account', r'bound API key', r'account.bound', r'generativelanguage\.[a-z]+', r'Gemini API User', r'Service Usage Consumer', r'serviceusage\.services\.use', r'free tier', r'billing', r'PERMISSION_DENIED', r'Uzbekistan']:
                   match = re.search(pattern, plain, re.I)
                   if match:
                       excerpt = plain[max(0, match.start()-300):match.end()+1600]
@@ -137,6 +141,10 @@ jobs:
               for excerpt in excerpts:
                   safe = excerpt.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
                   print('::notice title=Official API key requirements::' + safe)
+                  summary.append('\n' + excerpt + '\n')
+          # The public summary retains references beyond GitHub's annotation limit.
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write('\n'.join(summary))
           PY
       - name: Check documented free Standard-tier Gemini 3.8 Interactions access
         id: interactions

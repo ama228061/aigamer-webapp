@@ -47,7 +47,7 @@ with sync_playwright() as p:
         if len(requests) == 1:
             route.fulfill(status=429, content_type="application/json", body=json.dumps({"error": "rate_limited"}))
         else:
-            route.fulfill(content_type="application/json", body=json.dumps({"reply": reply}))
+            route.fulfill(content_type="application/json", body=json.dumps({"reply": reply, "model": "gemini-3.8-flash", "usage": {"inputTokens": 15, "outputTokens": 4, "thinkingTokens": 2, "cachedInputTokens": None, "totalTokens": 21}}))
     page.route("**/api/chat", mock_api)
     page.locator(".chat-launcher").click()
     page.locator("#chat-input").fill("Когда сеять?")
@@ -63,6 +63,11 @@ with sync_playwright() as p:
     page.locator("#chat-input").press("Enter")
     expect(page.locator(".assistant-message")).to_have_count(3)
     assert [m["role"] for m in requests[-1]["messages"]] == ["user", "model", "user"]
+    token_summary = page.evaluate("AGRO_DEBUG.summary()")
+    assert token_summary["requests"] == 3 and token_summary["measuredRequests"] == 2
+    assert token_summary["unknownUsageRequests"] == 1 and token_summary["totals"]["totalTokens"] == 42
+    token_log = json.dumps(page.evaluate("AGRO_DEBUG.getTokenLog()"))
+    assert "Когда сеять?" not in token_log and reply not in token_log
     page.screenshot(path=str(out / "chat.png"))
     print("Mocked browser chat: retry, history, Enter submission and safe text rendering passed.")
 

@@ -222,6 +222,8 @@ async function sendQuestion(retry = false) {
   messages.scrollTop = messages.scrollHeight;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 40000);
+  const started = performance.now();
+  let diagnostic = { status: "error", model: null, usage: null };
   try {
     const endpoint =
       window.AGRO_CONFIG?.chatEndpoint ||
@@ -231,12 +233,12 @@ async function sendQuestion(retry = false) {
       location.hostname.endsWith(".github.io")
     )
       throw new Error("not_configured");
-    let context = history.slice(-19);
+    let context = history.slice(-5);
     if (context[0]?.role !== "user") context = context.slice(1);
     while (
       context.length > 1 &&
       new TextEncoder().encode(JSON.stringify({ messages: context })).length >
-        40000
+        12000
     )
       context = context.slice(2);
     const response = await fetch(endpoint, {
@@ -246,16 +248,17 @@ async function sendQuestion(retry = false) {
       signal: controller.signal,
       credentials: "omit",
     });
-    const data = await response
-      .json()
-      .catch(() => ({
-        error:
-          response.status === 404 ? "not_configured" : "upstream_unavailable",
-      }));
+    const data = await response.json().catch(() => ({
+      error:
+        response.status === 404 ? "not_configured" : "upstream_unavailable",
+    }));
+    diagnostic.model = data.model;
+    diagnostic.usage = data.usage;
     if (!response.ok || typeof data.reply !== "string" || !data.reply.trim())
       throw new Error(data.error || "upstream_unavailable");
     history.push({ role: "model", text: data.reply });
     appendMessage("model", data.reply);
+    diagnostic.status = "ok";
   } catch (error) {
     retryPending = true;
     errorBox.querySelector("p").textContent =
@@ -263,6 +266,10 @@ async function sendQuestion(retry = false) {
       "Не удалось получить ответ. Проверьте соединение и попробуйте ещё раз.";
     errorBox.hidden = false;
   } finally {
+    window.AGRO_DEBUG?.recordRequest({
+      ...diagnostic,
+      durationMs: Math.round(performance.now() - started),
+    });
     clearTimeout(timeout);
     typing.remove();
     sending = false;

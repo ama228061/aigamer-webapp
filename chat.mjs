@@ -1,7 +1,7 @@
-export const DEFAULT_MODEL = "gemini-2.5-flash";
-const MAX_BODY = 48000;
+export const DEFAULT_MODEL = "gemini-3.8-flash";
+const MAX_BODY = 16000;
 const SYSTEM_PROMPT =
-  "Вы — АгроПомощник, консультант по сельскому хозяйству и садоводству. Отвечайте по-русски, понятно и по делу. Уточняйте культуру, регион, почву и симптомы, когда от этого зависит совет. Не выдумывайте факты, точные дозировки препаратов или результаты анализов. Предпочитайте бережные методы ухода. Если данных недостаточно, объясните ограничения и предложите обратиться к местному агроному.";
+  "Вы — АгроПомощник, консультант по сельскому хозяйству и садоводству. Отвечайте по-русски, кратко: обычно 2–5 предложений. Уточняйте культуру, регион, почву и симптомы, когда от этого зависит совет. Не выдумывайте факты, точные дозировки препаратов или результаты анализов. Предпочитайте бережные методы ухода. Если данных недостаточно, объясните ограничения и предложите обратиться к местному агроному.";
 
 export function jsonResponse(data, status = 200, origin = "") {
   const headers = {
@@ -44,7 +44,7 @@ function validMessages(messages) {
   return (
     Array.isArray(messages) &&
     messages.length > 0 &&
-    messages.length <= 19 &&
+    messages.length <= 5 &&
     messages.length % 2 === 1 &&
     messages.every((m, i) => {
       const role = i % 2 === 0 ? "user" : "model";
@@ -59,8 +59,33 @@ function validMessages(messages) {
   );
 }
 
+export function reportedUsage(metadata) {
+  if (!metadata || typeof metadata !== "object") return null;
+  const mapping = {
+    inputTokens: "promptTokenCount",
+    outputTokens: "candidatesTokenCount",
+    thinkingTokens: "thoughtsTokenCount",
+    cachedInputTokens: "cachedContentTokenCount",
+    totalTokens: "totalTokenCount",
+  };
+  const usage = Object.fromEntries(
+    Object.entries(mapping).map(([field, key]) => [
+      field,
+      Number.isSafeInteger(metadata[key]) && metadata[key] >= 0
+        ? metadata[key]
+        : null,
+    ]),
+  );
+  return Object.values(usage).some((value) => value !== null) ? usage : null;
+}
+
 // Shared by local development and the Cloudflare Worker. No credentials go to the browser.
-export async function handleChat(request, env, fetcher = globalThis.fetch) {
+export async function handleChat(
+  request,
+  env,
+  fetcher = globalThis.fetch,
+  logUsage = (record) => console.info(JSON.stringify(record)),
+) {
   const origin = request.headers.get("origin") || "";
   if (!env.ALLOWED_ORIGIN || origin !== env.ALLOWED_ORIGIN)
     return jsonResponse({ error: "forbidden" }, 403);
@@ -114,7 +139,13 @@ export async function handleChat(request, env, fetcher = globalThis.fetch) {
             parts: [{ text: m.text }],
           })),
           systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          generationConfig: { temperature: 0.65, maxOutputTokens: 2048 },
+          // Gemini 3 uses its recommended default temperature (1.0).
+          generationConfig: {
+            maxOutputTokens: 768,
+            thinkingConfig: {
+              thinkingLevel: model.includes("flash") ? "minimal" : "low",
+            },
+          },
         }),
         signal: AbortSignal.timeout(30000),
       },
@@ -137,6 +168,19 @@ export async function handleChat(request, env, fetcher = globalThis.fetch) {
       );
     }
     const data = await response.json();
+    const usage = reportedUsage(data.usageMetadata);
+    const usedModel =
+      typeof data.modelVersion === "string" &&
+      /^gemini-[\w.-]+$/.test(data.modelVersion)
+        ? data.modelVersion
+        : model;
+    if (usage)
+      logUsage({
+        event: "gemini_token_usage",
+        time: new Date().toISOString(),
+        model: usedModel,
+        usage,
+      });
     const parts = data.candidates?.[0]?.content?.parts;
     const reply = Array.isArray(parts)
       ? parts
@@ -146,8 +190,12 @@ export async function handleChat(request, env, fetcher = globalThis.fetch) {
           .trim()
       : "";
     if (!reply || reply.length > 12000)
-      return jsonResponse({ error: "upstream_unavailable" }, 502, origin);
-    return jsonResponse({ reply }, 200, origin);
+      return jsonResponse(
+        { error: "upstream_unavailable", model: usedModel, usage },
+        502,
+        origin,
+      );
+    return jsonResponse({ reply, model: usedModel, usage }, 200, origin);
   } catch (error) {
     return jsonResponse(
       {

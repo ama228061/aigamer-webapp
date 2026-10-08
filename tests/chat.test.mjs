@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { handleChat, DEFAULT_MODEL } from "../chat.mjs";
+import { handleChat, DEFAULT_MODEL, reportedUsage } from "../chat.mjs";
 import worker from "../worker.mjs";
 import { createApp } from "../server.mjs";
 
@@ -25,7 +25,7 @@ test("conversation goes to the configured Gemini model, key stays in the upstrea
   let called = false;
   const response = await handleChat(
     request({ messages: conversation }),
-    { ...env, GEMINI_MODEL: "gemini-2.5-flash" },
+    { ...env, GEMINI_MODEL: "gemini-3.8-flash" },
     async (url, options) => {
       called = true;
       assert.equal(
@@ -40,6 +40,12 @@ test("conversation goes to the configured Gemini model, key stays in the upstrea
         conversation.map((m) => m.text),
       );
       assert.ok(body.systemInstruction.parts[0].text.includes("АгроПомощник"));
+      assert.equal(body.generationConfig.maxOutputTokens, 768);
+      assert.equal(
+        body.generationConfig.thinkingConfig.thinkingLevel,
+        "minimal",
+      );
+      assert.equal(body.generationConfig.temperature, undefined);
       return Response.json({
         candidates: [
           {
@@ -58,6 +64,8 @@ test("conversation goes to the configured Gemini model, key stays in the upstrea
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     reply: "После дождя проверьте влажность.",
+    model: DEFAULT_MODEL,
+    usage: null,
   });
   assert.equal(response.headers.get("access-control-allow-origin"), origin);
 });
@@ -98,7 +106,7 @@ test("malformed, oversized and forged system messages cannot reach Gemini", asyn
     [{ role: "user", text: " " }],
     [{ role: "user", text: "a".repeat(2001) }],
     [...messages, ...messages],
-    Array.from({ length: 21 }, (_, i) => ({
+    Array.from({ length: 7 }, (_, i) => ({
       role: i % 2 ? "model" : "user",
       text: "hello",
     })),
@@ -219,6 +227,75 @@ test("local HTTP server serves Pages paths and exercises the same chat handler",
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     reply: "Проверьте почву перед поливом.",
+    model: DEFAULT_MODEL,
+    usage: null,
   });
   assert.equal(upstreamCalls, 1);
+});
+
+test("usage is the provider's reported data, including reasoning, and logs exclude conversation and key", async () => {
+  const logs = [];
+  const usage = {
+    inputTokens: 23,
+    outputTokens: 11,
+    thinkingTokens: 5,
+    cachedInputTokens: 3,
+    totalTokens: 39,
+  };
+  const response = await handleChat(
+    request(),
+    env,
+    async () =>
+      Response.json({
+        modelVersion: DEFAULT_MODEL,
+        candidates: [{ content: { parts: [{ text: "Ответ." }] } }],
+        usageMetadata: {
+          promptTokenCount: 23,
+          candidatesTokenCount: 11,
+          thoughtsTokenCount: 5,
+          cachedContentTokenCount: 3,
+          totalTokenCount: 39,
+        },
+      }),
+    (record) => logs.push(record),
+  );
+  assert.deepEqual((await response.json()).usage, usage);
+  assert.deepEqual(logs[0].usage, usage);
+  assert.equal(logs[0].event, "gemini_token_usage");
+  assert.ok(!JSON.stringify(logs).includes(messages[0].text));
+  assert.ok(!JSON.stringify(logs).includes(env.GEMINI_API_KEY));
+  assert.equal(reportedUsage(undefined), null);
+  assert.equal(
+    reportedUsage({
+      promptTokenCount: "secret-like-string",
+      totalTokenCount: -1,
+    }),
+    null,
+  );
+  assert.deepEqual(reportedUsage({ totalTokenCount: 0 }), {
+    inputTokens: null,
+    outputTokens: null,
+    thinkingTokens: null,
+    cachedInputTokens: null,
+    totalTokens: 0,
+  });
+});
+
+test("a blocked answer still records actual consumed tokens without inventing a reply", async () => {
+  const logs = [];
+  const response = await handleChat(
+    request(),
+    env,
+    async () =>
+      Response.json({
+        candidates: [],
+        usageMetadata: { promptTokenCount: 10, totalTokenCount: 10 },
+      }),
+    (record) => logs.push(record),
+  );
+  assert.equal(response.status, 502);
+  const body = await response.json();
+  assert.equal(body.usage.totalTokens, 10);
+  assert.equal(body.usage.outputTokens, null);
+  assert.equal(logs.length, 1);
 });

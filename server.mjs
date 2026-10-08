@@ -11,6 +11,7 @@ const publicFiles = new Set([
   "styles.css",
   "app.js",
   "config.js",
+  "debug.js",
   "favicon.png",
   "flutter_service_worker.js",
 ]);
@@ -31,7 +32,7 @@ function limited(key) {
     entry = { count: 0, until: now + 60000 };
     limits.set(key, entry);
   }
-  return ++entry.count > 15;
+  return ++entry.count > 5;
 }
 
 export function createApp(env = process.env, fetcher = globalThis.fetch) {

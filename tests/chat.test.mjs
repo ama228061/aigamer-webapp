@@ -17,6 +17,7 @@ const providerReply = (text) =>
   Response.json({ candidates: [{ content: { parts: [{ text }] } }] });
 
 test("conversation goes to the configured Gemini model, key stays in the upstream header", async () => {
+  const configuredModel = "gemini-3.8-flash";
   const conversation = [
     ...messages,
     { role: "model", text: "Учитывайте влажность почвы." },
@@ -25,12 +26,12 @@ test("conversation goes to the configured Gemini model, key stays in the upstrea
   let called = false;
   const response = await handleChat(
     request({ messages: conversation }),
-    { ...env, GEMINI_MODEL: "gemini-3.8-flash" },
+    { ...env, GEMINI_MODEL: configuredModel },
     async (url, options) => {
       called = true;
       assert.equal(
         url,
-        `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_MODEL}:generateContent`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${configuredModel}:generateContent`,
       );
       assert.equal(new URL(url).search, "");
       assert.equal(options.headers["x-goog-api-key"], env.GEMINI_API_KEY);
@@ -64,7 +65,7 @@ test("conversation goes to the configured Gemini model, key stays in the upstrea
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     reply: "После дождя проверьте влажность.",
-    model: DEFAULT_MODEL,
+    model: configuredModel,
     usage: null,
   });
   assert.equal(response.headers.get("access-control-allow-origin"), origin);

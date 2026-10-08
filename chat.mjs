@@ -1,4 +1,4 @@
-export const DEFAULT_MODEL = "gemini-3.8-flash";
+export const DEFAULT_MODEL = "gemini-3.1-flash-lite";
 const SAFE_PROVIDER_REASONS = new Set([
   "API_KEY_INVALID",
   "API_KEY_EXPIRED",

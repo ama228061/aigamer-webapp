@@ -9,7 +9,7 @@
   "compatibility_date": "2026-10-07",
   "vars": {
     "ALLOWED_ORIGIN": "https://ama228061.github.io",
-    "GEMINI_MODEL": "gemini-3.8-flash",
+    "GEMINI_MODEL": "gemini-3.1-flash-lite",
   },
   "ratelimits": [
     {

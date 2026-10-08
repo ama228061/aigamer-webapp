@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   checkGeminiAccess,
   checkGeminiGeneration,
+  checkGeminiInteractions,
 } from "../scripts/check-gemini.mjs";
 import { DEFAULT_MODEL, providerFailureReason } from "../chat.mjs";
 
@@ -24,6 +25,65 @@ test("Gemini access check uses a read-only model request with the key in its hea
     });
   });
   assert.equal(model, DEFAULT_MODEL);
+});
+
+test("Interactions diagnostics use Standard tier without storage and report actual tokens", async () => {
+  const result = await checkGeminiInteractions(env, async (url, options) => {
+    assert.equal(
+      url,
+      "https://generativelanguage.googleapis.com/v1beta/interactions",
+    );
+    assert.equal(options.headers["x-goog-api-key"], env.GEMINI_API_KEY);
+    const body = JSON.parse(options.body);
+    assert.equal(body.service_tier, "standard");
+    assert.equal(body.store, false);
+    assert.equal(body.generation_config.max_output_tokens, 128);
+    return Response.json({
+      model: DEFAULT_MODEL,
+      steps: [
+        {
+          type: "thought",
+          content: [{ type: "text", text: "private reasoning" }],
+        },
+        { type: "model_output", content: [{ type: "text", text: "Готово." }] },
+      ],
+      usage: {
+        total_input_tokens: 12,
+        total_output_tokens: 3,
+        total_tokens: 15,
+      },
+    });
+  });
+  assert.equal(result.model, DEFAULT_MODEL);
+  assert.equal(result.usage.totalTokens, 15);
+  assert.equal(result.usage.thinkingTokens, null);
+  assert.equal(result.reply, undefined);
+});
+
+test("Interactions diagnosis rejects private error bodies and responses without an answer", async () => {
+  await assert.rejects(
+    checkGeminiInteractions(env, async () =>
+      Response.json(
+        {
+          error: {
+            status: "PERMISSION_DENIED",
+            message: env.GEMINI_API_KEY,
+          },
+        },
+        { status: 403 },
+      ),
+    ),
+    (error) => {
+      assert.match(error.message, /HTTP 403, PERMISSION_DENIED/);
+      assert.ok(!error.message.includes(env.GEMINI_API_KEY));
+      return true;
+    },
+  );
+  await assert.rejects(
+    checkGeminiInteractions(env, async () =>
+      Response.json({ model: DEFAULT_MODEL, steps: [] }),
+    ),
+  );
 });
 
 test("Gemini authentication diagnosis contains fixed codes without private provider details", async () => {

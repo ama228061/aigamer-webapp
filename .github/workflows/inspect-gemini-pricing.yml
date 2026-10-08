@@ -2,6 +2,11 @@ name: Inspect Gemini free-tier availability
 
 on:
   workflow_dispatch:
+    inputs:
+      probe_free_access:
+        description: Run small generation checks after confirming the project has no billing
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths: [.github/workflows/inspect-gemini-pricing.yml]
@@ -99,7 +104,7 @@ jobs:
           PY
       - name: Check documented free Standard-tier Gemini 3.8 Interactions access
         id: interactions
-        if: steps.pricing.outputs.flash_free == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.probe_free_access && steps.pricing.outputs.flash_free == 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: gemini-3.8-flash

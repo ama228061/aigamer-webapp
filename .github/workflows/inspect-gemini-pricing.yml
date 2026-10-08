@@ -49,3 +49,32 @@ jobs:
               raise SystemExit(1)
           print('::notice::Pricing inspection completed without using the Gemini key or generating text.')
           PY
+      - name: Read public key authentication and free-tier requirements
+        run: |
+          python3 - <<'PY'
+          import urllib.request, re, html
+          urls = [
+              'https://ai.google.dev/gemini-api/docs/api-key?hl=en',
+              'https://docs.cloud.google.com/api-keys/docs/create-manage-api-keys?hl=en',
+          ]
+          for url in urls:
+              try:
+                  page = urllib.request.urlopen(url, timeout=30).read().decode()
+              except Exception:
+                  print('::warning::Public authentication documentation could not be retrieved from ' + url)
+                  continue
+              page = re.sub(r'<(script|style)\b.*?</\1>', '', page, flags=re.S)
+              plain = re.sub(r'\s+', ' ', html.unescape(re.sub('<[^>]+>', ' ', page)))
+              excerpts = []
+              for pattern in [r'authenticated key', r'service account', r'bound API key', r'generativelanguage\.[a-z]+', r'Gemini API User', r'free tier', r'billing']:
+                  match = re.search(pattern, plain, re.I)
+                  if match:
+                      excerpt = plain[max(0, match.start()-300):match.end()+1600]
+                      if excerpt not in excerpts:
+                          excerpts.append(excerpt)
+              if not excerpts:
+                  print('::notice::Public key documentation was retrieved but contained no recognized authentication/free-tier section: ' + url)
+              for excerpt in excerpts:
+                  safe = excerpt.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                  print('::notice title=Official API key requirements::' + safe)
+          PY

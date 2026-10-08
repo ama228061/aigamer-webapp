@@ -38,6 +38,7 @@ jobs:
           cache: npm
       - name: Check required credentials
         # Every new run reads the current values from repository Actions secrets.
+        # Standard Gemini keys must be explicitly restricted to Gemini API.
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -201,3 +202,26 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh api --method POST "repos/$GITHUB_REPOSITORY/pages/builds" > /dev/null
+      - name: Verify the published GitHub Pages configuration
+        run: |
+          node --input-type=module -e '
+            import { readFile } from "node:fs/promises";
+            const expected = (await readFile("config.js", "utf8")).trim();
+            const address = "https://ama228061.github.io/aigamer-webapp/config.js";
+            const deadline = Date.now() + 180000;
+            while (Date.now() < deadline) {
+              try {
+                const response = await fetch(address + "?deployment=" + process.env.GITHUB_RUN_ID, {
+                  cache: "no-store",
+                  signal: AbortSignal.timeout(10000),
+                });
+                if (response.ok && (await response.text()).trim() === expected) {
+                  console.info("::notice::Published GitHub Pages configuration matches the verified Gemini Worker endpoint.");
+                  process.exit(0);
+                }
+              } catch {}
+              await new Promise(resolve => setTimeout(resolve, 5000));
+            }
+            console.error("::error::GitHub Pages did not publish the verified configuration within three minutes. Check the Pages build status before retrying.");
+            process.exit(1);
+          '

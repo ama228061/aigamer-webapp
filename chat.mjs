@@ -17,7 +17,30 @@ const SAFE_PROVIDER_REASONS = new Set([
   "BILLING_DISABLED",
   "CREDENTIALS_MISSING",
   "IAM_PERMISSION_DENIED",
+  "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+  "ACCESS_TOKEN_TYPE_UNSUPPORTED",
+  "API_KEY_RESTRICTION_VIOLATION",
+  "SECURITY_POLICY_VIOLATED",
+  "AUTH_SCOPE_INSUFFICIENT",
+  "REGION_UNSUPPORTED",
+  "BILLING_REQUIRED",
+  "API_KEY_UNSUPPORTED",
 ]);
+
+export function safeProviderStatus(status) {
+  return [
+    "PERMISSION_DENIED",
+    "UNAUTHENTICATED",
+    "FAILED_PRECONDITION",
+    "RESOURCE_EXHAUSTED",
+    "NOT_FOUND",
+    "INVALID_ARGUMENT",
+    "UNAVAILABLE",
+    "INTERNAL",
+  ].includes(status)
+    ? status
+    : null;
+}
 
 export function safeProviderReason(reason) {
   return SAFE_PROVIDER_REASONS.has(reason) ? reason : null;
@@ -31,13 +54,29 @@ export function providerFailureReason(data) {
   )
     return "API_KEY_REPORTED_LEAKED";
   const details = data?.error?.details;
-  if (!Array.isArray(details)) return null;
-  for (const detail of details) {
+  for (const detail of Array.isArray(details) ? details : []) {
     if (
       detail?.["@type"] === "type.googleapis.com/google.rpc.ErrorInfo" &&
       safeProviderReason(detail.reason)
     )
       return detail.reason;
+  }
+  const message =
+    typeof data?.error?.message === "string" ? data.error.message : "";
+  for (const [pattern, reason] of [
+    [/insufficient authentication scopes/i, "AUTH_SCOPE_INSUFFICIENT"],
+    [
+      /user location is not supported|not (?:available|supported) in your (?:country|region)/i,
+      "REGION_UNSUPPORTED",
+    ],
+    [
+      /enable billing|billing is disabled|billing.*required/i,
+      "BILLING_REQUIRED",
+    ],
+    [/API keys? (?:are|is) not supported/i, "API_KEY_UNSUPPORTED"],
+    [/API key.*(?:not valid|invalid)/i, "API_KEY_INVALID"],
+  ]) {
+    if (pattern.test(message)) return reason;
   }
   return null;
 }
@@ -194,9 +233,9 @@ export async function handleChat(
       },
     );
     if (!response.ok) {
-      const providerReason = providerFailureReason(
-        await response.json().catch(() => ({})),
-      );
+      const providerData = await response.json().catch(() => ({}));
+      const providerReason = providerFailureReason(providerData);
+      const providerStatus = safeProviderStatus(providerData.error?.status);
       const error =
         response.status === 404
           ? "model_not_found"
@@ -207,7 +246,11 @@ export async function handleChat(
               : "upstream_unavailable";
       // Provider bodies can contain sensitive diagnostics; return only fixed codes.
       return jsonResponse(
-        { error, ...(providerReason ? { providerReason } : {}) },
+        {
+          error,
+          ...(providerReason ? { providerReason } : {}),
+          ...(providerStatus ? { providerStatus } : {}),
+        },
         response.status === 429 ? 429 : 502,
         origin,
       );

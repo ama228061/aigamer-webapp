@@ -1,5 +1,11 @@
 import { fileURLToPath } from "node:url";
-import { DEFAULT_MODEL, providerFailureReason } from "../chat.mjs";
+import {
+  DEFAULT_MODEL,
+  providerFailureReason,
+  handleChat,
+  safeProviderReason,
+  safeProviderStatus,
+} from "../chat.mjs";
 
 // Model metadata is read-only: no prompt, generated answer or generation tokens.
 export async function checkGeminiAccess(env, fetcher = globalThis.fetch) {
@@ -36,12 +42,47 @@ export async function checkGeminiAccess(env, fetcher = globalThis.fetch) {
   return model;
 }
 
+// Explicit diagnostic after a Worker generation failure: one direct request,
+// using the same shared handler and token ceiling, to isolate provider access.
+export async function checkGeminiGeneration(env, fetcher = globalThis.fetch) {
+  const origin = "https://ama228061.github.io";
+  const response = await handleChat(
+    new Request("https://diagnostic.invalid/api/chat", {
+      method: "POST",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ role: "user", text: "Ответьте одним словом: готово." }],
+      }),
+    }),
+    { ...env, ALLOWED_ORIGIN: origin },
+    fetcher,
+    () => {},
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    const reason = safeProviderReason(data.providerReason);
+    const status = safeProviderStatus(data.providerStatus);
+    throw new Error(
+      `Direct Gemini generation failed (HTTP ${response.status}${reason ? ", " + reason : ""}${status ? ", " + status : ""}).`,
+    );
+  }
+  return { model: data.model, usage: data.usage };
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
-    const model = await checkGeminiAccess(process.env);
-    console.info(
-      `${process.env.GITHUB_ACTIONS === "true" ? "::notice::" : ""}Gemini key and ${model} model metadata access verified without generation.`,
-    );
+    const prefix = process.env.GITHUB_ACTIONS === "true" ? "::notice::" : "";
+    if (process.argv.includes("--generation")) {
+      const result = await checkGeminiGeneration(process.env);
+      console.info(
+        `${prefix}Direct Gemini generation succeeded from GitHub Actions: ${JSON.stringify(result)}`,
+      );
+    } else {
+      const model = await checkGeminiAccess(process.env);
+      console.info(
+        `${prefix}Gemini key and ${model} model metadata access verified without generation.`,
+      );
+    }
   } catch (error) {
     console.error(
       `${process.env.GITHUB_ACTIONS === "true" ? "::error::" : ""}${error.message}`,

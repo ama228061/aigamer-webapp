@@ -178,9 +178,15 @@ jobs:
             }
           '
       - name: Verify a real answer and connect the public endpoint
+        id: chat
         env:
           WORKER_URL: ${{ steps.worker.outputs.deployment-url }}
         run: node scripts/connect-pages.mjs
+      - name: Diagnose provider generation access after a Worker failure
+        if: failure() && steps.chat.conclusion == 'failure'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/check-gemini.mjs --generation
       - name: Save endpoint to main
         run: |
           git add config.js

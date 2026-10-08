@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkGeminiAccess } from "../scripts/check-gemini.mjs";
-import { DEFAULT_MODEL } from "../chat.mjs";
+import {
+  checkGeminiAccess,
+  checkGeminiGeneration,
+} from "../scripts/check-gemini.mjs";
+import { DEFAULT_MODEL, providerFailureReason } from "../chat.mjs";
 
 const env = { GEMINI_API_KEY: "test-only-private-key" };
 
@@ -76,4 +79,72 @@ test("unavailable or incompatible model metadata cannot pass the access check", 
   ]) {
     await assert.rejects(checkGeminiAccess(env, async () => response()));
   }
+});
+
+test("known scope and location errors become fixed codes without copying provider messages", () => {
+  for (const [message, reason] of [
+    [
+      "Request had insufficient authentication scopes.",
+      "AUTH_SCOPE_INSUFFICIENT",
+    ],
+    ["User location is not supported for the API use.", "REGION_UNSUPPORTED"],
+    ["API keys are not supported by this API.", "API_KEY_UNSUPPORTED"],
+    ["Enable billing to continue.", "BILLING_REQUIRED"],
+  ]) {
+    assert.equal(
+      providerFailureReason({
+        error: { message: `${message} ${env.GEMINI_API_KEY}` },
+      }),
+      reason,
+    );
+  }
+});
+
+test("explicit generation diagnosis uses the shared bounded request and reports actual usage", async () => {
+  let calls = 0;
+  const result = await checkGeminiGeneration(env, async (url, options) => {
+    calls++;
+    assert.ok(url.endsWith(`/${DEFAULT_MODEL}:generateContent`));
+    assert.equal(options.headers["x-goog-api-key"], env.GEMINI_API_KEY);
+    const body = JSON.parse(options.body);
+    assert.equal(body.generationConfig.maxOutputTokens, 768);
+    assert.equal(body.contents.length, 1);
+    return Response.json({
+      modelVersion: DEFAULT_MODEL,
+      candidates: [{ content: { parts: [{ text: "Готово." }] } }],
+      usageMetadata: {
+        promptTokenCount: 50,
+        candidatesTokenCount: 3,
+        totalTokenCount: 53,
+      },
+    });
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.model, DEFAULT_MODEL);
+  assert.equal(result.usage.totalTokens, 53);
+  assert.equal(result.reply, undefined);
+});
+
+test("direct generation auth failures omit private messages and project metadata", async () => {
+  await assert.rejects(
+    checkGeminiGeneration(env, async () =>
+      Response.json(
+        {
+          error: {
+            status: "PERMISSION_DENIED",
+            message: `Request had insufficient authentication scopes. ${env.GEMINI_API_KEY}`,
+            details: [{ metadata: { project: "private-project" } }],
+          },
+        },
+        { status: 403 },
+      ),
+    ),
+    (error) => {
+      assert.match(error.message, /AUTH_SCOPE_INSUFFICIENT/);
+      assert.match(error.message, /PERMISSION_DENIED/);
+      assert.ok(!error.message.includes(env.GEMINI_API_KEY));
+      assert.ok(!error.message.includes("private-project"));
+      return true;
+    },
+  );
 });

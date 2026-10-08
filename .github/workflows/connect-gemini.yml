@@ -43,7 +43,7 @@ jobs:
           node --input-type=module -e '
             const missing = ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "GEMINI_API_KEY"].filter(name => !process.env[name]);
             if (missing.length) {
-              console.error("Add these repository Actions secrets: " + missing.join(", "));
+              console.error("::error::Add these repository Actions secrets: " + missing.join(", "));
               process.exit(1);
             }
           '

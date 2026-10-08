@@ -2,6 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { connectPages } from "../scripts/connect-pages.mjs";
 
+const readyPreflight = () =>
+  new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "https://ama228061.github.io",
+      "Access-Control-Allow-Methods": "POST",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
+
 test("public endpoint is saved only after the deployed Worker returns a real answer", async () => {
   let saved;
   const endpoint = await connectPages(
@@ -14,6 +24,7 @@ test("public endpoint is saved only after the deployed Worker returns a real ans
         );
         assert.equal(options.headers.Origin, "https://ama228061.github.io");
         assert.equal(options.headers["x-goog-api-key"], undefined);
+        if (options.method === "OPTIONS") return readyPreflight();
         assert.deepEqual(JSON.parse(options.body).messages, [
           { role: "user", text: "Ответьте одним словом: готово." },
         ]);
@@ -38,8 +49,56 @@ test("a missing key, unavailable model or malformed reply leaves public configur
   ]) {
     await assert.rejects(
       connectPages("https://agro-assistant.example.workers.dev", {
-        fetcher: async () => Response.json(body, { status }),
+        fetcher: async (url, options) =>
+          options.method === "OPTIONS"
+            ? readyPreflight()
+            : Response.json(body, { status }),
         save: async () => assert.fail("Failed deployment was published"),
+      }),
+      /Public configuration was not changed/,
+    );
+  }
+});
+
+test("routing readiness probes wait for propagation without repeating Gemini generation", async () => {
+  let probes = 0;
+  let generations = 0;
+  await connectPages("https://agro-assistant.example.workers.dev", {
+    fetcher: async (url, options) => {
+      if (options.method === "OPTIONS") {
+        probes++;
+        return probes < 3
+          ? new Response("Not found", { status: 404 })
+          : readyPreflight();
+      }
+      generations++;
+      return Response.json({ reply: "Готово.", model: "gemini-3.8-flash" });
+    },
+    pause: async () => {},
+    save: async () => {},
+  });
+  assert.equal(probes, 3);
+  assert.equal(generations, 1);
+});
+
+test("unavailable routes and incorrect browser origins cannot trigger generation or publication", async () => {
+  for (const response of [
+    () => new Response("Not found", { status: 404 }),
+    () =>
+      new Response(null, {
+        status: 204,
+        headers: { "Access-Control-Allow-Origin": "https://example.org" },
+      }),
+  ]) {
+    await assert.rejects(
+      connectPages("https://agro-assistant.example.workers.dev", {
+        fetcher: async (url, options) => {
+          assert.equal(options.method, "OPTIONS");
+          return response();
+        },
+        readinessAttempts: 2,
+        pause: async () => {},
+        save: async () => assert.fail("Unverified endpoint was published"),
       }),
       /Public configuration was not changed/,
     );

@@ -29,8 +29,12 @@ export async function checkGeminiAccess(env, fetcher = globalThis.fetch) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const reason = providerFailureReason(data);
+    const hint =
+      reason === "API_KEY_SERVICE_BLOCKED"
+        ? " Allow generativelanguage.googleapis.com in this key's API restrictions; enabling the service alone does not change those restrictions."
+        : "";
     throw new Error(
-      `Gemini model access failed (HTTP ${response.status}${reason ? ", " + reason : ""}). No generation request was made.`,
+      `Gemini model access failed (HTTP ${response.status}${reason ? ", " + reason : ""}). No generation request was made.${hint}`,
     );
   }
   if (

@@ -1,0 +1,45 @@
+name: Inspect Gemini free-tier availability
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/inspect-gemini-pricing.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  pricing:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read Google's current public pricing without generation
+        run: |
+          python3 - <<'PY'
+          import urllib.request, html, re
+          url = 'https://ai.google.dev/gemini-api/docs/pricing?hl=en'
+          try:
+              page = urllib.request.urlopen(url, timeout=30).read().decode()
+          except Exception:
+              print('::error::Official Gemini pricing could not be retrieved. No generation requests were made.')
+              raise SystemExit(1)
+          headings = list(re.finditer(r'<h[23]\b[^>]*>.*?</h[23]>', page, re.S))
+          found = False
+          for i, heading in enumerate(headings):
+              title = re.sub(r'\s+', ' ', html.unescape(re.sub('<[^>]+>', ' ', heading.group())))
+              if not re.search(r'Gemini\s+3(?:\.|\s)', title, re.I):
+                  continue
+              end = headings[i+1].start() if i+1 < len(headings) else len(page)
+              section = page[heading.start():end]
+              section = re.sub(r'<(script|style)\b.*?</\1>', '', section, flags=re.S)
+              plain = re.sub(r'\s+', ' ', html.unescape(re.sub('<[^>]+>', ' ', section))).strip()
+              if not re.search(r'Free (?:Tier|of charge)', plain, re.I):
+                  continue
+              safe = plain[:6000].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::notice title=Official Gemini pricing::' + safe)
+              found = True
+          if not found:
+              print('::error::No Gemini 3 free-tier pricing section was identified in the official page. No generation requests were made.')
+              raise SystemExit(1)
+          print('::notice::Pricing inspection completed without using the Gemini key or generating text.')
+          PY

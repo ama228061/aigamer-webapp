@@ -12,6 +12,7 @@ export async function connectPages(
     fetcher = globalThis.fetch,
     pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     readinessAttempts = 30,
+    report = () => {},
     save = (content) =>
       writeFile(new URL("../config.js", import.meta.url), content),
   } = {},
@@ -75,10 +76,9 @@ export async function connectPages(
     throw new Error(
       `Worker routing is not ready (OPTIONS ${lastStatus}). Public configuration was not changed.`,
     );
-  if (process.env.GITHUB_ACTIONS === "true")
-    console.info(
-      "::notice::Worker routing and browser CORS verified before the single Gemini request.",
-    );
+  report(
+    "Worker routing and browser CORS verified before the single Gemini request.",
+  );
   const response = await fetcher(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", Origin: SITE_ORIGIN },
@@ -113,9 +113,7 @@ export async function connectPages(
       model: data.model,
       usage: data.usage,
     });
-    console.info(usageRecord);
-    if (process.env.GITHUB_ACTIONS === "true")
-      console.info(`::notice title=Gemini token usage::${usageRecord}`);
+    report(usageRecord);
   }
   await save(
     `// Public API endpoint. API credentials stay in Cloudflare secrets.\nwindow.AGRO_CONFIG = ${JSON.stringify({ chatEndpoint: endpoint })};\n`,
@@ -126,7 +124,15 @@ export async function connectPages(
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     if (!process.env.WORKER_URL) throw new Error("WORKER_URL is required");
-    const endpoint = await connectPages(process.env.WORKER_URL);
+    const endpoint = await connectPages(process.env.WORKER_URL, {
+      // Only the live CLI check emits notices; mocked test requests stay quiet.
+      report: (message) =>
+        console.info(
+          process.env.GITHUB_ACTIONS === "true"
+            ? `::notice::${message}`
+            : message,
+        ),
+    });
     console.log(`Gemini Worker verified. Saved public endpoint: ${endpoint}`);
   } catch (error) {
     console.error(

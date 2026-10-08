@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { deploymentResult } from "../scripts/deploy-worker.mjs";
+import {
+  deploymentResult,
+  deployUsingREST,
+} from "../scripts/deploy-worker.mjs";
 
 test("Worker deployment extracts its actual public URL from Wrangler output", () => {
   assert.equal(
@@ -14,6 +17,83 @@ test("Worker deployment extracts its actual public URL from Wrangler output", ()
   assert.throws(
     () => deploymentResult({ status: 0, stdout: "Nothing deployed" }),
     /did not return/,
+  );
+});
+
+const config = {
+  name: "agro-assistant",
+  compatibility_date: "2026-10-07",
+  vars: {
+    ALLOWED_ORIGIN: "https://ama228061.github.io",
+    GEMINI_MODEL: "gemini-3.8-flash",
+  },
+  ratelimits: [
+    {
+      name: "CHAT_RATE_LIMITER",
+      namespace_id: "1001",
+      simple: { limit: 5, period: 60 },
+    },
+  ],
+  observability: { enabled: true },
+};
+const env = {
+  CLOUDFLARE_ACCOUNT_ID: "example-account",
+  CLOUDFLARE_API_TOKEN: "sample-private-token",
+};
+
+test("REST deployment preserves rate limits and modules, and derives its URL from Cloudflare", async () => {
+  const calls = [];
+  const url = await deployUsingREST(config, env, async (url, options) => {
+    calls.push({ url, options });
+    return Response.json({
+      success: true,
+      result: url.endsWith("/workers/subdomain")
+        ? { subdomain: "confirmed-account" }
+        : {},
+    });
+  });
+  assert.equal(url, "https://agro-assistant.confirmed-account.workers.dev");
+  assert.equal(calls.length, 3);
+  assert.equal(
+    calls[0].options.headers.Authorization,
+    "Bearer sample-private-token",
+  );
+  const metadata = JSON.parse(calls[0].options.body.get("metadata"));
+  assert.equal(metadata.main_module, "worker.mjs");
+  assert.ok(
+    metadata.bindings.some(
+      (binding) =>
+        binding.type === "ratelimit" && binding.name === "CHAT_RATE_LIMITER",
+    ),
+  );
+  assert.ok(!JSON.stringify(metadata).includes(env.CLOUDFLARE_API_TOKEN));
+  assert.ok(
+    (await calls[0].options.body.get("worker.mjs").text()).includes(
+      "./chat.mjs",
+    ),
+  );
+  assert.ok(calls[0].options.body.get("chat.mjs"));
+  assert.equal(calls[2].options.method, "POST");
+});
+
+test("REST deployment reports permission failures without disclosing provider bodies or credentials", async () => {
+  await assert.rejects(
+    () =>
+      deployUsingREST(config, env, async () =>
+        Response.json(
+          {
+            success: false,
+            errors: [{ code: 9109, message: "sample-private-token" }],
+          },
+          { status: 403 },
+        ),
+      ),
+    (error) => {
+      assert.match(error.message, /HTTP 403/);
+      assert.match(error.message, /9109/);
+      assert.ok(!error.message.includes(env.CLOUDFLARE_API_TOKEN));
+      return true;
+    },
   );
 });
 

@@ -36,6 +36,8 @@ jobs:
                   model_headings.append((heading, title))
           found = False
           flash_free = False
+          lite_free = False
+          earlier_lite_free = False
           for i, (heading, title) in enumerate(model_headings):
               if not re.search(r'Gemini\s+3(?:\.|\s)', title, re.I):
                   continue
@@ -44,10 +46,12 @@ jobs:
               section = re.sub(r'<(script|style)\b.*?</\1>', '', section, flags=re.S)
               plain = re.sub(r'\s+', ' ', html.unescape(re.sub('<[^>]+>', ' ', section))).strip()
               standard = plain.split('Batch Free Tier')[0]
-              if (re.search(r'Gemini\s+3\.8\s+Flash\b', title, re.I)
-                  and 'Input price Free of charge' in standard
-                  and re.search(r'Output price(?:\s*\([^)]*\))?\s+Free of charge', standard)):
-                  flash_free = True
+              free_text = ('Input price Free of charge' in standard
+                  and re.search(r'Output price(?:\s*\([^)]*\))?\s+Free of charge', standard))
+              if free_text:
+                  if re.search(r'Gemini\s+3\.8\s+Flash\b', title, re.I): flash_free = True
+                  if re.search(r'Gemini\s+3\.5\s+Flash-Lite\b', title, re.I): lite_free = True
+                  if re.search(r'Gemini\s+3\.1\s+Flash-Lite\b', title, re.I): earlier_lite_free = True
               if not re.search(r'Free (?:Tier|of charge)', plain, re.I):
                   continue
               safe = plain[:6000].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
@@ -61,6 +65,8 @@ jobs:
           print('::notice::Pricing inspection completed without using the Gemini key or generating text.')
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write('flash_free=' + str(flash_free).lower() + '\n')
+              output.write('lite_free=' + str(lite_free).lower() + '\n')
+              output.write('earlier_lite_free=' + str(earlier_lite_free).lower() + '\n')
           PY
       - name: Read public key authentication and free-tier requirements
         run: |
@@ -92,8 +98,22 @@ jobs:
                   print('::notice title=Official API key requirements::' + safe)
           PY
       - name: Check documented free Standard-tier Gemini 3.8 Interactions access
+        id: interactions
         if: steps.pricing.outputs.flash_free == 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: gemini-3.8-flash
         run: node scripts/check-gemini.mjs --interactions
+      - name: Check documented free Gemini 3.5 Flash-Lite access
+        id: lite
+        if: failure() && steps.interactions.conclusion == 'failure' && steps.pricing.outputs.lite_free == 'true'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: gemini-3.5-flash-lite
+        run: node scripts/check-gemini.mjs --generation
+      - name: Check documented free Gemini 3.1 Flash-Lite access
+        if: failure() && steps.lite.conclusion == 'failure' && steps.pricing.outputs.earlier_lite_free == 'true'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: gemini-3.1-flash-lite
+        run: node scripts/check-gemini.mjs --generation

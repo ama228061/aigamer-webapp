@@ -21,7 +21,7 @@ test("deployment failure reports Cloudflare codes without forwarding credential-
   const result = {
     status: 1,
     stderr:
-      "Authentication error [code: 9109]\nProvider diagnostic: sample-private-token-value",
+      "[ERROR] Authentication error [code: 9109]\n\nProvider diagnostic: sample-private-token-value",
   };
   assert.throws(
     () => deploymentResult(result),
@@ -30,6 +30,21 @@ test("deployment failure reports Cloudflare codes without forwarding credential-
       assert.match(error.message, /authentication or permissions/);
       assert.ok(!error.message.includes("sample-private-token-value"));
       assert.ok(!error.message.includes("Provider diagnostic"));
+      return true;
+    },
+  );
+  assert.throws(
+    () =>
+      deploymentResult(
+        {
+          status: 1,
+          stderr: "[ERROR] Invalid token sample-private-token-value",
+        },
+        ["sample-private-token-value"],
+      ),
+    (error) => {
+      assert.ok(!error.message.includes("sample-private-token-value"));
+      assert.match(error.message, /\[redacted\]/);
       return true;
     },
   );

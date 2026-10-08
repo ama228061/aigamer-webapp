@@ -1,14 +1,29 @@
 import { spawnSync } from "node:child_process";
 import { appendFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 
 // Report only known diagnostic fields; CLI output may contain account details.
-export function deploymentResult(result) {
+export function deploymentResult(result, redactions = []) {
   if (result.status !== 0) {
-    const output = `${result.stdout || ""}\n${result.stderr || ""}`;
+    const output = stripVTControlCharacters(
+      `${result.stdout || ""}\n${result.stderr || ""}`,
+    );
     const codes = [
       ...new Set([...output.matchAll(/\[code:\s*(\d+)\]/g)].map((m) => m[1])),
     ];
+    const errorStart = output.indexOf("[ERROR]");
+    let detail =
+      errorStart >= 0
+        ? output.slice(errorStart + "[ERROR]".length).split(/\n\s*\n/)[0]
+        : String(result.stderr || "")
+            .split("\n")
+            .find((line) => line.trim()) || "unreported";
+    for (const value of redactions.filter(
+      (value) => typeof value === "string" && value,
+    ))
+      detail = detail.split(value).join("[redacted]");
+    detail = detail.replace(/[\r\n]+/g, " ").slice(0, 600);
     const categories = [
       [
         /authentication error|unauthori[sz]ed|insufficient permission|permission denied/i,
@@ -18,10 +33,10 @@ export function deploymentResult(result) {
       [/subdomain/i, "Workers subdomain"],
       [/binding/i, "Worker bindings"],
     ]
-      .filter(([pattern]) => pattern.test(output))
+      .filter(([pattern]) => pattern.test(detail))
       .map(([, label]) => label);
     throw new Error(
-      `Wrangler deployment failed (exit ${Number.isInteger(result.status) ? result.status : "unavailable"}; Cloudflare codes: ${codes.join(", ") || "unreported"}; diagnostics: ${categories.join(", ") || "unreported"}).`,
+      `Wrangler deployment failed (exit ${Number.isInteger(result.status) ? result.status : "unavailable"}; Cloudflare codes: ${codes.join(", ") || "unreported"}; diagnostics: ${categories.join(", ") || "unreported"}). ${detail}`,
     );
   }
   const urls =
@@ -46,12 +61,19 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       timeout: 120000,
       maxBuffer: 4 * 1024 * 1024,
     });
-    const url = deploymentResult(result);
+    const url = deploymentResult(result, [
+      process.env.CLOUDFLARE_API_TOKEN,
+      process.env.GEMINI_API_KEY,
+    ]);
     if (process.env.GITHUB_OUTPUT)
       await appendFile(process.env.GITHUB_OUTPUT, `deployment-url=${url}\n`);
     console.info(`::notice::Worker deployed: ${url}`);
   } catch (error) {
-    console.error(`::error::${error.message}`);
+    const message = error.message
+      .replaceAll("%", "%25")
+      .replaceAll("\r", "%0D")
+      .replaceAll("\n", "%0A");
+    console.error(`::error::${message}`);
     process.exitCode = 1;
   }
 }

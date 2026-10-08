@@ -82,7 +82,11 @@ export function createApp(env = process.env, fetcher = globalThis.fetch) {
         res.end("Not found");
         return;
       }
-      const body = await readFile(filename);
+      // Development chat uses this server even after Pages points to the Worker.
+      const body =
+        relative === "config.js"
+          ? Buffer.from('window.AGRO_CONFIG = { chatEndpoint: "" };\n')
+          : await readFile(filename);
       res.writeHead(200, {
         "Content-Type": mime[extname(filename)] || "application/octet-stream",
         "X-Content-Type-Options": "nosniff",

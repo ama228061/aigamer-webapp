@@ -22,6 +22,23 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
+      - name: Inspect the stored key format without revealing it or generating text
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          node --input-type=module -e '
+            const key = process.env.GEMINI_API_KEY;
+            if (!key) {
+              console.error("::error::GEMINI_API_KEY is missing.");
+              process.exit(1);
+            }
+            const format = /^AIza[A-Za-z0-9_-]{35}$/.test(key)
+              ? "standard API key format"
+              : key.startsWith("AQ.")
+                ? "authorization key format"
+                : "unrecognized key format";
+            console.info("::notice::Stored credential uses " + format + ". Only its format was inspected; no key value or generation request was logged.");
+          '
       - name: Read Google's current public pricing without generation
         id: pricing
         run: |
@@ -80,6 +97,8 @@ jobs:
           urls = [
               'https://ai.google.dev/gemini-api/docs/api-key?hl=en',
               'https://docs.cloud.google.com/api-keys/docs/create-manage-api-keys?hl=en',
+              'https://ai.google.dev/gemini-api/docs/troubleshooting?hl=en',
+              'https://ai.google.dev/gemini-api/docs/available-regions?hl=en',
           ]
           for url in urls:
               try:
@@ -90,7 +109,7 @@ jobs:
               page = re.sub(r'<(script|style)\b.*?</\1>', '', page, flags=re.S)
               plain = re.sub(r'\s+', ' ', html.unescape(re.sub('<[^>]+>', ' ', page)))
               excerpts = []
-              for pattern in [r'authenticated key', r'service account', r'bound API key', r'generativelanguage\.[a-z]+', r'Gemini API User', r'free tier', r'billing']:
+              for pattern in [r'authenticated key', r'service account', r'bound API key', r'generativelanguage\.[a-z]+', r'Gemini API User', r'free tier', r'billing', r'PERMISSION_DENIED', r'Uzbekistan']:
                   match = re.search(pattern, plain, re.I)
                   if match:
                       excerpt = plain[max(0, match.start()-300):match.end()+1600]

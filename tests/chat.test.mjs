@@ -231,6 +231,13 @@ test("local HTTP server serves Pages paths and exercises the same chat handler",
   const homepage = await fetch(`${base}/aigamer-webapp/`);
   assert.equal(homepage.status, 200);
   assert.match(await homepage.text(), /С заботой о земле/);
+  const config = await fetch(`${base}/aigamer-webapp/config.js`);
+  assert.equal(config.status, 200);
+  assert.equal(
+    config.headers.get("content-type"),
+    "text/javascript; charset=utf-8",
+  );
+  assert.match(await config.text(), /chatEndpoint: ""/);
   assert.equal(
     (await fetch(`${base}/aigamer-webapp/assets/assets/images/banner1.jpg`))
       .status,

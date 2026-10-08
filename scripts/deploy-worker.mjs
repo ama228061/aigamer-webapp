@@ -34,7 +34,7 @@ export function deploymentResult(result, redactions = []) {
     detail = detail.replace(/[\r\n]+/g, " ").slice(0, 1000);
     const categories = [
       [
-        /authentication error|unauthori[sz]ed|insufficient permission|permission denied/i,
+        /authentication error|unauthori[sz]ed|insufficient permission|permission denied|no access to the specified resource/i,
         "authentication or permissions",
       ],
       [/compatibility.date/i, "compatibility date"],

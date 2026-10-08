@@ -21,7 +21,7 @@ test("deployment failure reports Cloudflare error details with credentials redac
   const result = {
     status: 1,
     stderr:
-      "[ERROR] A request to the Cloudflare API failed.\n\nAuthentication error [code: 9109]\nToken: sample-private-token-value",
+      "[ERROR] A request to the Cloudflare API failed.\n\nNo access to the specified resource. [code: 9109]\nToken: sample-private-token-value",
   };
   assert.throws(
     () => deploymentResult(result, ["sample-private-token-value"]),
